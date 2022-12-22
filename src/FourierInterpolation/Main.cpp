@@ -6,13 +6,10 @@
 #include <numbers>
 #include <complex>
 #include <algorithm>
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
-#include <implot.h>
 
+#include "Backend.h"
 #include "Clock.h"
+
 using clock_type = fi::Clock<std::chrono::duration<float>>;
 
 namespace fi
@@ -23,24 +20,22 @@ namespace fi
     {
         if (ImPlot::BeginPlot(title)) 
         {
-            ImPlot::SetNextMarkerStyle(ImPlotMarker_None);
+            ImVec2 maxVal(50.0f, 3.0f);
+            ImVec2 minVal(0.0f, -3.0f);
+            ImPlot::SetNextMarkerStyle(ImPlotMarker_Diamond);
+            ImPlot::SetupAxisLimits(ImAxis_X1, minVal.x, maxVal.x);
+            ImPlot::SetupAxisLimits(ImAxis_Y1, minVal.y, maxVal.y);
             ImPlot::SetupAxes("x","fx");
             ImPlot::PlotLine("f(x)", &graph[0].x, &graph[0].y, Size, ImPlotLineFlags_None, 0, sizeof(ImVec2));
 
             float period = 1.0f / freq;
-            if (period < graph.size() * 0.1f)
+            static std::array<float, 5> frequencyGraph;
+            for (int32_t i = 0; i < frequencyGraph.size(); i++)
             {
-                static std::array<ImVec2, 5> frequencyGraph;
-                for (int32_t i = 0; i < frequencyGraph.size(); i++)
-                {
-                    frequencyGraph.at(i).x = period * (float) i;
-                    frequencyGraph.at(i).y = 0;
-                }
-                ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle);
-                ImPlot::PlotScatter("T(freq)", &frequencyGraph[0].x, &frequencyGraph[0].y, frequencyGraph.size(), 
-                    ImPlotLineFlags_None, 0, sizeof(ImVec2));
+                frequencyGraph.at(i) = period * (float) i;
             }
-
+            ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle);
+            ImPlot::PlotInfLines("Frequency", frequencyGraph.data(), frequencyGraph.size());
             ImPlot::EndPlot();
         }
     }
@@ -62,7 +57,7 @@ namespace fi
             float xmod = fmodf(x, span);
             if (!data.empty() && xmod < data.back().x)
             {
-                data.shrink_to_fit();
+                data.clear();
             }
             data.push_back(ImVec2(xmod, y));
         }
@@ -86,87 +81,76 @@ void FreqEulersInterpretation(const std::array<ImVec2, Size>& graph, float freq)
     weight /= graph.size();
     float wx = weight.real();
     float wy = weight.imag();
-    if (ImPlot::BeginPlot("Eulers"))
+    ImVec2 windowSize = ImGui::GetWindowSize();
+    if (ImPlot::BeginPlot("Eulers", ImVec2((windowSize.x - 25.0f) / 3.0f, windowSize.y / 2.0f)))
     {
         ImPlot::SetNextMarkerStyle(ImPlotMarker_None);
         ImPlot::SetupAxes("x","fx");
+        ImPlot::SetupAxesLimits(-2.0, 2.0, -2.0, 2.0, ImGuiCond_Always);
         ImPlot::PlotLine("f(x)", eulers_x.data(), eulers_fx.data(), Size, ImPlotLineFlags_None);
         ImPlot::PlotScatter("Weight", &wx, &wy, 1);
 
         ImPlot::EndPlot();
     }
 
-    static fi::RollingBuffer rweight(1.0f);
-    rweight.addPoint(freq, wx);
-    if (ImPlot::BeginPlot("Rolling"))
+    static float history = 1.0f;
+    static ImPlotAxisFlags flags = ImPlotAxisFlags_None;
+    static fi::RollingBuffer tReal(history);
+    static fi::RollingBuffer tImag(history);
+    tReal.addPoint(freq, wx);
+    tImag.addPoint(freq, wy);
+    ImGui::SameLine();
+    if (ImPlot::BeginPlot("##Rolling", ImVec2(2.0f * (windowSize.x - 25.0f) / 3.0f, windowSize.y / 2.0f)))
     {
-        ImPlot::PlotLine("freq -> weight", &rweight.data[0].x, &rweight.data[0].y, rweight.data.size(), 0, 0, sizeof(ImVec2));
+        ImPlot::SetNextMarkerStyle(ImPlotMarker_None);
+        ImPlot::SetupAxes(NULL, NULL, flags, flags);
+        ImPlot::SetupAxisLimits(ImAxis_X1, 0.0, history, ImGuiCond_Always);
+        ImPlot::SetupAxisLimits(ImAxis_Y1, -0.5, 0.5);
+        ImPlot::PlotLine("Real Part", &tReal.data[0].x, &tReal.data[0].y, tReal.data.size(), 0, 0, sizeof(ImVec2));
+        ImPlot::PlotLine("Imaginary Part", &tImag.data[0].x, &tImag.data[0].y, tImag.data.size(), 0, 0, sizeof(ImVec2));
         ImPlot::EndPlot();
     }
 }
 
+
 int32_t main()
-{
-    glfwInit();
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Dear ImGui GLFW+OpenGL3 example", NULL, NULL);
-    if (!window)
+{ 
+    auto context = fi::initializeContext<500>();
+    if (!context.initialized)
     {
-        return 1;
+        std::cout << "Failed to initialize context! Aborting...\n";
+        return -1;
     }
+    context.setFunc([](float x) -> float {
+        return cos(x);
+    });  
 
-    if (glewInit() != GL_TRUE)
-    {
-        return 1;
-    }
-
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // Enable vsync
-
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 150");
-    ImPlot::CreateContext();
-
-    ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    io.BackendFlags |= ImGuiDockNodeFlags_PassthruCentralNode;
-
-    std::array<ImVec2, 500> graph;
-    float dx = graph.size() * 0.1f;
-    for (size_t i = 0; i < graph.size(); i++)
-    {
-        graph.at(i).x = (float) i * 0.1f;
-        float x = graph[i].x;
-        graph.at(i).y = cos(x);
-    }
-    
     clock_type::initialize();
-    while (!glfwWindowShouldClose(window))
+    while (!context.shouldClose())
     {
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        
-        ImGui::NewFrame();
+        context.begin();
         {
-            ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
             ImGui::Begin("Fourier Interpolation");
             {
                 float currentTime = clock_type::getTime() * 0.1f;
                 float frequency = currentTime / (2 * std::numbers::pi_v<float>);
                 ImGui::Text("Current time: %f", currentTime);
                 ImGui::Text("Current frequency: %f", frequency);
-                fi::PlotLine(graph, frequency, "Periodic");
-                FreqEulersInterpretation(graph, frequency);
+                fi::PlotLine(context.graph, frequency, "Periodic");
+                FreqEulersInterpretation(context.graph, frequency);
+                if (ImGui::Button("Reset"))
+                {
+                    clock_type::reset();
+                }
+                if (ImGui::Button("Toggle Clock"))
+                {
+                    clock_type::toggle();
+                }
             }
             ImGui::End();
+            ImPlot::ShowDemoWindow();
         }
-        ImGui::Render();
-
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwPollEvents();
-        glfwSwapBuffers(window);
+        context.end();
     }
     clock_type::deinitialize();
 

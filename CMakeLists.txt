@@ -4,7 +4,7 @@ project(FourierInterpolation LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(FI_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/FurierInterpolation")
+set(FI_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/FourierInterpolation")
 set(FI_VENDOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor")
 set(IMGUI_INCLUDE_DIRS "${FI_VENDOR_DIR}/imgui")
 set(IMPLOT_INCLUDE_DIRS "${FI_VENDOR_DIR}/implot")

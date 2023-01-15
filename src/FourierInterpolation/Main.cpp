@@ -81,8 +81,9 @@ int32_t main()
 
                     interpolated = ft::FDZP(mathData, factor);
                     interp = ft::IDFT(interpolated);
+                    error = CalculateError(result, interp, factor);
                 };
-                // ImGui::SameLine();
+                ImGui::SameLine();
                 ImGui::Checkbox("Render Markers", &renderMarkers);
                 if (ImPlot::BeginPlot("Periodic function"))
                 {

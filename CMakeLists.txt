@@ -13,7 +13,6 @@ set(GLFW_INCLUDE_DIRS "${FI_VENDOR_DIR}/glfw/include")
 file(GLOB_RECURSE 
     SOURCES "${FI_SOURCE_DIR}/*.cpp")
 
-add_subdirectory("${FI_VENDOR_DIR}/eigen")
 add_subdirectory("${FI_VENDOR_DIR}/glfw")
 
 # GLEW
@@ -58,13 +57,11 @@ target_link_libraries(IMPLOT
 add_executable(FourierInterpolation ${SOURCES})
 target_include_directories(FourierInterpolation 
     PUBLIC ${FI_SOURCE_DIR}
-    PUBLIC ${FI_VENDOR_DIR}/eigen
     PUBLIC ${GLFW_INCLUDE_DIRS}
     PUBLIC ${GLEW_INCLUDE_DIRS}
     PUBLIC ${IMGUI_INCLUDE_DIRS}
     PUBLIC ${IMPLOT_INCLUDE_DIRS}) 
 target_link_libraries(FourierInterpolation 
-    PUBLIC Eigen3::Eigen
     PUBLIC IMGUI
     PUBLIC IMPLOT
     PUBLIC glfw

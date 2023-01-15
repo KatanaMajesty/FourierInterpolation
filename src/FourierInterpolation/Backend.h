@@ -39,7 +39,7 @@ namespace ft
     {
         glfwInit();
         Context context;
-        context.window = glfwCreateWindow(1920, 1080, "Dear ImGui GLFW+OpenGL3 example", NULL, NULL);
+        context.window = glfwCreateWindow(1920, 1080, "Fourier Interpolation with Zero-Padding Frequency domain", NULL, NULL);
         if (!context.window)
         {
             return { false, nullptr, nullptr };

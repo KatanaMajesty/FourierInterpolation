@@ -8,151 +8,108 @@
 #include <algorithm>
 
 #include "Backend.h"
-#include "Clock.h"
+#include "Math.h"
 
-using clock_type = fi::Clock<std::chrono::duration<float>>;
-
-namespace fi
+void PlotLine(const std::vector<ft::Vec2>& data, const ft::Vec2& boundsX, const ft::Vec2& boundsY, ImPlotMarker marker = ImPlotMarker_None)
 {
-
-    template<size_t Size>
-    void PlotLine(const std::array<ImVec2, Size>& graph, float freq, const char* title) 
-    {
-        if (ImPlot::BeginPlot(title)) 
-        {
-            ImVec2 maxVal(50.0f, 3.0f);
-            ImVec2 minVal(0.0f, -3.0f);
-            ImPlot::SetNextMarkerStyle(ImPlotMarker_Diamond);
-            ImPlot::SetupAxisLimits(ImAxis_X1, minVal.x, maxVal.x);
-            ImPlot::SetupAxisLimits(ImAxis_Y1, minVal.y, maxVal.y);
-            ImPlot::SetupAxes("x","fx");
-            ImPlot::PlotLine("f(x)", &graph[0].x, &graph[0].y, Size, ImPlotLineFlags_None, 0, sizeof(ImVec2));
-
-            float period = 1.0f / freq;
-            static std::array<float, 5> frequencyGraph;
-            for (int32_t i = 0; i < frequencyGraph.size(); i++)
-            {
-                frequencyGraph.at(i) = period * (float) i;
-            }
-            ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle);
-            ImPlot::PlotInfLines("Frequency", frequencyGraph.data(), frequencyGraph.size());
-            ImPlot::EndPlot();
-        }
-    }
-
-    // utility structure for realtime plot
-    struct RollingBuffer 
-    {
-        float span;
-        std::vector<ImVec2> data;
-
-        RollingBuffer(float span) 
-            : span(span)
-        {
-            data.reserve(2000);
-        }
-
-        void addPoint(float x, float y) 
-        {
-            float xmod = fmodf(x, span);
-            if (!data.empty() && xmod < data.back().x)
-            {
-                data.clear();
-            }
-            data.push_back(ImVec2(xmod, y));
-        }
-    };
-
-}; // fi namespace
-
-template<size_t Size>
-void FreqEulersInterpretation(const std::array<ImVec2, Size>& graph, float freq)
-{
-    std::array<float, Size> eulers_x;
-    std::array<float, Size> eulers_fx; 
-    std::complex<float> weight;
-    for (size_t i = 0; i < graph.size(); i++)
-    {
-        auto cplx = graph[i].y * std::exp(-2 * std::numbers::pi_v<float> * std::complex(0.0f, 1.0f) * freq * graph[i].x);
-        weight += cplx;
-        eulers_x.at(i) = cplx.real(); 
-        eulers_fx.at(i) = cplx.imag();
-    }
-    weight /= graph.size();
-    float wx = weight.real();
-    float wy = weight.imag();
-    ImVec2 windowSize = ImGui::GetWindowSize();
-    if (ImPlot::BeginPlot("Eulers", ImVec2((windowSize.x - 25.0f) / 3.0f, windowSize.y / 2.0f)))
-    {
-        ImPlot::SetNextMarkerStyle(ImPlotMarker_None);
-        ImPlot::SetupAxes("x","fx");
-        ImPlot::SetupAxesLimits(-2.0, 2.0, -2.0, 2.0, ImGuiCond_Always);
-        ImPlot::PlotLine("f(x)", eulers_x.data(), eulers_fx.data(), Size, ImPlotLineFlags_None);
-        ImPlot::PlotScatter("Weight", &wx, &wy, 1);
-
-        ImPlot::EndPlot();
-    }
-
-    static float history = 1.0f;
-    static ImPlotAxisFlags flags = ImPlotAxisFlags_None;
-    static fi::RollingBuffer tReal(history);
-    static fi::RollingBuffer tImag(history);
-    tReal.addPoint(freq, wx);
-    tImag.addPoint(freq, wy);
-    ImGui::SameLine();
-    if (ImPlot::BeginPlot("##Rolling", ImVec2(2.0f * (windowSize.x - 25.0f) / 3.0f, windowSize.y / 2.0f)))
-    {
-        ImPlot::SetNextMarkerStyle(ImPlotMarker_None);
-        ImPlot::SetupAxes(NULL, NULL, flags, flags);
-        ImPlot::SetupAxisLimits(ImAxis_X1, 0.0, history, ImGuiCond_Always);
-        ImPlot::SetupAxisLimits(ImAxis_Y1, -0.5, 0.5);
-        ImPlot::PlotLine("Real Part", &tReal.data[0].x, &tReal.data[0].y, tReal.data.size(), 0, 0, sizeof(ImVec2));
-        ImPlot::PlotLine("Imaginary Part", &tImag.data[0].x, &tImag.data[0].y, tImag.data.size(), 0, 0, sizeof(ImVec2));
-        ImPlot::EndPlot();
-    }
+    size_t N = data.size();
+    ImPlot::SetNextMarkerStyle(marker);
+    ImPlot::SetupAxisLimits(ImAxis_X1, boundsX.x, boundsX.y, ImGuiCond_Always);
+    ImPlot::SetupAxisLimits(ImAxis_Y1, boundsY.x, boundsY.y, ImGuiCond_Always);
+    ImPlot::SetupAxes("x","f(x)");
+    ImPlot::PlotLine("f(x)", &data[0].x, &data[0].y, N, ImPlotLineFlags_None, 0, sizeof(ft::Vec2));
 }
 
+void PlotLine(const ft::DiscreteData& plot, const ft::Vec2& boundsY, ImPlotMarker marker = ImPlotMarker_None)
+{
+    PlotLine(plot.data, ft::Vec2(plot.from, plot.to), boundsY, marker);
+}
+
+float CalculateError(const ft::DiscreteData& lhs, const ft::DiscreteData& rhs, size_t factor)
+{
+    float error = 0;  
+    size_t N = lhs.size();
+    for (size_t i = 0; i < N; ++i)
+    {
+        error += std::abs(lhs[i].y - rhs[factor * i].y);
+    }
+    error /= N;
+    return error;
+}
 
 int32_t main()
 { 
-    auto context = fi::initializeContext<500>();
+    // First we initialize the rendering context
+    auto context = ft::initializeContext();
     if (!context.initialized)
     {
         std::cout << "Failed to initialize context! Aborting...\n";
         return -1;
     }
-    context.setFunc([](float x) -> float {
-        return cos(x);
-    });  
 
-    clock_type::initialize();
+    // Determine the number of samples
+    size_t samples = 40;
+    auto mathFunc = [](float x) -> float 
+    { 
+        return sin(x) + 0.5f * sin(x + 3.0f * x); 
+    };
+    ft::DiscreteData mathData(mathFunc, samples);
+
+    std::vector<ft::Complex> coeffs = ft::DFT(mathData);
+    ft::DiscreteData result = ft::IDFT(coeffs);
+
+    size_t factor = 4;
+    std::vector<ft::Complex> interpolated = ft::FDZP(mathData, factor);
+    ft::DiscreteData interp = ft::IDFT(interpolated);
+    
+    // Calculate an error
+    float error = CalculateError(result, interp, factor);
+
+    bool renderMarkers = true;
     while (!context.shouldClose())
     {
         context.begin();
         {
             ImGui::Begin("Fourier Interpolation");
             {
-                float currentTime = clock_type::getTime() * 0.1f;
-                float frequency = currentTime / (2 * std::numbers::pi_v<float>);
-                ImGui::Text("Current time: %f", currentTime);
-                ImGui::Text("Current frequency: %f", frequency);
-                fi::PlotLine(context.graph, frequency, "Periodic");
-                FreqEulersInterpretation(context.graph, frequency);
-                if (ImGui::Button("Reset"))
+                if (ImGui::SliderInt("Amount of Samples", (int32_t*) &samples, 0, 80) ||
+                    ImGui::SliderInt("Scaling Factor", (int32_t*) &factor, 1, 16))
                 {
-                    clock_type::reset();
-                }
-                if (ImGui::Button("Toggle Clock"))
+                    mathData = ft::DiscreteData(mathFunc, samples);
+                    coeffs = ft::DFT(mathData);
+                    result = ft::IDFT(coeffs);
+
+                    interpolated = ft::FDZP(mathData, factor);
+                    interp = ft::IDFT(interpolated);
+                };
+                // ImGui::SameLine();
+                ImGui::Checkbox("Render Markers", &renderMarkers);
+                if (ImPlot::BeginPlot("Periodic function"))
                 {
-                    clock_type::toggle();
+                    PlotLine(mathData, ft::Vec2(-2.0f, 2.0f), renderMarkers ? ImPlotMarker_Circle : ImPlotMarker_None);
+                    ImPlot::EndPlot();
                 }
+                if (ImPlot::BeginPlot("IDFT result"))
+                {
+                    ImPlot::PushColormap(ImPlotColormap_Pastel);
+                    PlotLine(result, ft::Vec2(-2.0f, 2.0f), renderMarkers ? ImPlotMarker_Circle : ImPlotMarker_None);
+                    ImPlot::PopColormap();
+                    ImPlot::EndPlot();
+                }
+                if (ImPlot::BeginPlot("Interpolation result"))
+                {
+                    ImPlot::PushColormap(ImPlotColormap_Twilight);
+                    ImPlot::NextColormapColor();
+                    PlotLine(interp, ft::Vec2(-2.0f, 2.0f), renderMarkers ? ImPlotMarker_Circle : ImPlotMarker_None);
+                    ImPlot::PopColormap();
+                    ImPlot::EndPlot();
+                }
+                ImGui::Text("Error: %.9f", error);
             }
             ImGui::End();
-            ImPlot::ShowDemoWindow();
         }
         context.end();
     }
-    clock_type::deinitialize();
 
     ImPlot::DestroyContext();
     ImGui::DestroyContext();
